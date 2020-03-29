@@ -1,0 +1,5 @@
+compilers/*
+*/*.out
+*/__pycache__/*
+*/*tab.py
+.vscode
