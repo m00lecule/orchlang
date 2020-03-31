@@ -21,6 +21,15 @@ class MyParser(object):
                 | root SEMI          
         '''
 
+    def p_root_get(self, p):
+        '''expression : NAME          
+        '''
+        if p[1] not in MyParser.variables.keys():
+            print("Variable not initialized")
+        else:
+            p[0]=MyParser.variables[p[1]]
+
+
     def p_root_if(self, p):
         ''' root : IF LPAREN condition RPAREN expression 
         '''
@@ -32,13 +41,13 @@ class MyParser(object):
         '''
         if p[3] == False:
             print(f"Result {p[7]}")
+        else:
+            print(f"Result {p[5]}")
 
     def p_root_set(self, p):
         '''root : NAME IS expression
-        '''
-        
+        '''        
         MyParser.variables[p[1]] = p[3]
-        print(f"Added {MyParser.variables[p[1]]}")
 
 
     def p_condition(self, p):

@@ -8,7 +8,8 @@ class MyLexer(object):
         'IF': 'IF',
         'ELSE': 'ELSE',
         'WHILE': 'WHILE',
-        'FOR': 'FOR'
+        'FOR': 'FOR',
+        'SET': 'SET'
         }
 
     tokens = list(reserved.values()) + [
