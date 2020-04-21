@@ -89,6 +89,6 @@ class MyLexer(object):
             print(tok)
 
 
-x = MyLexer()
+# x = MyLexer()
 
-x.test('"1234"')
+# x.test('"michal" + "DYGAS"')
