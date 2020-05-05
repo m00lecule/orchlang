@@ -16,11 +16,16 @@ class MyLexer(object):
         "DOUBLE": "NUMBER",
         "BOOL": "BOOL",
         "STRING": "STRING_T",
+        "True": "TRUE",
+        "False": "FALSE",
+        "def": "DEF",
     }
 
     tokens = list(reserved.values()) + [
         "LOG_OP",
         "IS",
+        "LCPAREN",
+        "RCPAREN",
         "STRING",
         "NAME",
         "FLOAT",
@@ -32,6 +37,7 @@ class MyLexer(object):
         "RPAREN",
         "COND_OP",
         "SEMI",
+        "COMA",
     ]
 
     t_LOG_OP = r"\&\&|\|\|"
@@ -40,12 +46,15 @@ class MyLexer(object):
     t_BIN_OP_2 = r"\+|\-"
     t_LPAREN = r"\("
     t_RPAREN = r"\)"
+    t_LCPAREN = r"\{"
+    t_RCPAREN = r"\}"
     t_IS = r"\="
     t_COND_OP = r"\=\=|\>|\<|\>\=|\<\="
     t_SEMI = r"\;"
+    t_COMA = r"\,"
 
     def t_STRING(self, t):
-        '"[a-zA-Z0-9_]*"'
+        '"[ a-zA-Z0-9_]*"'
         return t
 
     def t_NAME(self, t):
@@ -89,6 +98,6 @@ class MyLexer(object):
             print(tok)
 
 
-# x = MyLexer()
+x = MyLexer()
 
-# x.test('"michal" + "DYGAS"')
+x.test("michal ( 10 )")
