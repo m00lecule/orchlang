@@ -1,5 +1,8 @@
 import ply.yacc as yacc
 from mylexer import MyLexer
+import matplotlib.pyplot as plt
+from networkx.drawing.nx_agraph import graphviz_layout
+import networkx as nx
 
 
 class Expr:
@@ -12,6 +15,50 @@ class Root(Expr):
         self.scope = Scope()
         self.code = code
         self.scope.push_layer()
+
+    def plot_init(self):
+        G = nx.DiGraph()
+
+        self.plot(G)
+
+        pos = graphviz_layout(G, prog="dot")
+
+        labels = nx.get_node_attributes(G, "desc")
+
+        binop_nodes = [
+            n for (n, ty) in nx.get_node_attributes(G, "type").items() if ty == "binop"
+        ]
+
+        nx.draw(
+            G,
+            pos,
+            font_size=20,
+            node_size=3000,
+            labels=labels,
+            arrows=True,
+            font_family="fantasy",
+            alpha=0.8,
+        )
+
+        nx.draw_networkx_nodes(
+            G,
+            pos,
+            nodelist=binop_nodes,
+            node_color="red",
+            node_size=3000,
+            font_family="fantasy",
+            alpha=0.8,
+            node_shape="s",
+        )
+
+        plt.axis("off")
+        plt.savefig("labels_and_colors.png")  # save as png
+        plt.show()
+
+    def plot(self, G):
+        for line in self.code:
+            G.add_edge(self, line)
+            line.plot(G)
 
     def eval(self, scope=None):
         scp = self.scope if scope == None else scope
@@ -26,11 +73,19 @@ class Root(Expr):
 
 
 class BinOp(Expr):
-    def __init__(self, left, op, right):
+    def __init__(self, left, op, right, op_sign):
         self.type = "binop"
         self.left = left
         self.right = right
         self.op = op
+        self.op_sign = op_sign
+
+    def plot(self, G):
+        G.add_node(self, desc=self.op_sign, type=self.type)
+        G.add_edge(self, self.left)
+        G.add_edge(self, self.right)
+        self.left.plot(G)
+        self.right.plot(G)
 
     def eval(self, scope):
         return self.op(self.left.eval(scope), self.right.eval(scope))
@@ -43,6 +98,9 @@ class Constant(Expr):
 
     def eval(self, scope=None):
         return self.value
+
+    def plot(self, G):
+        G.add_node(self, desc=self.value)
 
 
 class ForLoop(Expr):
@@ -74,6 +132,13 @@ class VariableInit(Expr):
         scope.put_local(self.variable, self.value.eval(scope))
         return ()  # Scala easter egg
 
+    def plot(self, G):
+        G.add_node(self, desc="init")
+        G.add_node(self.variable, desc=self.variable)
+        G.add_edge(self, self.variable)
+        G.add_edge(self, self.value)
+        self.value.plot(G)
+
 
 class FunctionInit(Expr):
     def __init__(self, args, func_name, body):
@@ -94,6 +159,9 @@ class VariableRedef(Expr):
     def eval(self, scope):
         return scope.redef_var(self.variable, self.value.eval(scope))
 
+    def plot(self, G):
+        pass
+
 
 class VariableCall(Expr):
     def __init__(self, variable):
@@ -101,6 +169,9 @@ class VariableCall(Expr):
 
     def eval(self, scope):
         return scope.get(self.variable)
+
+    def plot(self, G):
+        G.add_node(self, desc=self.variable)
 
 
 class FunctionCall(Expr):
@@ -126,6 +197,9 @@ class FunctionCall(Expr):
         scope.pop_layer()
         return ret
 
+    def plot(self, G):
+        pass
+
 
 class IfElse(Expr):
     def __init__(self, cond, if_block, else_block=None):
@@ -138,6 +212,9 @@ class IfElse(Expr):
             return self.if_block.eval(scope)
 
         return self.else_block.eval(scope) if self.else_block else ()
+
+    def plot(self, G):
+        pass
 
 
 class Scope(object):
@@ -204,22 +281,22 @@ class MyParser(object):
     def p_error(self, p):
         print("Syntax error")
 
-    def p_block(self, p):
+    def p_root_block(self, p):
         """root : LCPAREN block RCPAREN
         """
         p[0] = p[2]
 
-    def p_blockty(self, p):
+    def p_block_line(self, p):
         """block : block SEMI line
         """
         p[0] = p[1] + p[3]
 
-    def p_blockty2(self, p):
+    def p_block_is_line(self, p):
         """block : line
         """
         p[0] = p[1]
 
-    def p_rootl(self, p):
+    def p_line_is(self, p):
         """line : expr
                 | cond
                 | stream
@@ -231,32 +308,32 @@ class MyParser(object):
         """
         p[0] = [p[1]]
 
-    def p_for(self, p):
+    def p_for_loop(self, p):
         """for : FOR LPAREN assign SEMI cond SEMI assign RPAREN LCPAREN block RCPAREN
         """
         p[0] = ForLoop(p[3], p[5], p[7], Root(p[10]))
 
-    def p_get_var(self, p):
+    def p_expr_name_call(self, p):
         """expr : NAME          
         """
         p[0] = VariableCall(p[1])
 
-    def p_root_if(self, p):
+    def p_if_block(self, p):
         """ ifelse : IF LPAREN cond RPAREN LCPAREN block RCPAREN
         """
         p[0] = IfElse(p[3], Root(p[6]))
 
-    def p_root_if_else(self, p):
+    def p_if_else_block(self, p):
         """ ifelse : IF LPAREN cond RPAREN LCPAREN block RCPAREN ELSE LCPAREN block RCPAREN 
         """
         p[0] = IfElse(p[3], Root(p[6]), Root(p[10]))
 
-    def p_root_if_l(self, p):
+    def p_if_line(self, p):
         """ ifelse : IF LPAREN cond RPAREN line
         """
         p[0] = IfElse(p[3], Root(p[5]))
 
-    def p_func_def(self, p):
+    def p_func(self, p):
         """ def_fun : DEF NAME LPAREN var_list RPAREN LCPAREN block RCPAREN 
         """
         p[0] = FunctionInit(p[4], p[2], Root(p[7]))
@@ -271,7 +348,7 @@ class MyParser(object):
         """
         p[0] = p[1] + [p[3]]
 
-    def p_arg_list1(self, p):
+    def p_arg_list_end(self, p):
         """ arg_list : expr
         """
         p[0] = [p[1]]
@@ -281,58 +358,58 @@ class MyParser(object):
         """
         p[0] = p[1] + [p[3]]
 
-    def p_var_list1(self, p):
+    def p_var_list_end(self, p):
         """ var_list : NAME
         """
         p[0] = [p[1]]
 
-    def p_root_if_else_l(self, p):
+    def p_if_else_line(self, p):
         """ ifelse : IF LPAREN cond RPAREN line ELSE line 
         """
         p[0] = IfElse(p[3], Root(p[5]), Root(p[7]))
 
-    def p_root_set_numb(self, p):
+    def p_assign_expr(self, p):
         """assign : NUMBER NAME IS expr
         """
         p[0] = VariableInit(p[2], p[4])
 
-    def p_root_override_numb(self, p):
+    def p_override_expr(self, p):
         """assign : NAME IS expr
         """
         p[0] = VariableRedef(p[1], p[3])
 
-    def p_root_override_bool(self, p):
+    def p_override_cond(self, p):
         """assign : NAME IS cond
         """
         p[0] = VariableRedef(p[1], p[3])
 
-    def p_root_override_str(self, p):
+    def p_override_str(self, p):
         """assign : NAME IS stream
         """
         p[0] = VariableRedef(p[1], p[3])
 
-    def p_root_set_bool(self, p):
+    def p_set_bool(self, p):
         """assign : BOOL NAME IS cond
         """
         p[0] = VariableInit(p[2], p[4])
 
-    def p_root_set_str(self, p):
+    def p_set_str(self, p):
         """assign : STRING_T NAME IS stream
         """
         p[0] = VariableInit(p[2], p[4])
 
-    def p_stream_binop(self, p):
+    def p_str_binop(self, p):
         """stream : stream BIN_OP_2 stream  
         """
         if p[2] == "+":
-            p[0] = BinOp(p[1], lambda x, y: x + y, p[3])
+            p[0] = BinOp(p[1], lambda x, y: x + y, p[3], p[2])
 
-    def p_stream_2_var(self, p):
+    def p_str_name(self, p):
         """stream : NAME  
         """
         p[0] = VariableCall(p[1])
 
-    def p_stream_2_str(self, p):
+    def p_str_2_str(self, p):
         """stream : STRING  
         """
         p[0] = Constant(p[1][1:-1])
@@ -353,7 +430,7 @@ class MyParser(object):
         elif p[2] == "||":
             func = lambda x, y: x or y
 
-        p[0] = BinOp(p[1], func, p[3])
+        p[0] = BinOp(p[1], func, p[3], p[2])
 
     def p_cond_rel(self, p):
         """ cond : expr COND_OP expr   
@@ -371,21 +448,14 @@ class MyParser(object):
         elif p[2] == "==":
             func = lambda x, y: x == y
 
-        p[0] = BinOp(p[1], func, p[3])
+        p[0] = BinOp(p[1], func, p[3], p[2])
 
-    def p_root(self, p):
+    def p_root_line(self, p):
         """root : line     
         """
         p[0] = p[1]
 
-    # def p_rootl(self, p):
-    #     """line : expr
-    #             | cond
-    #             | stream
-    #     """
-    #     p[0] = p[1]
-
-    def p_parenth(self, p):
+    def p_expr_paren(self, p):
         """expr : LPAREN expr RPAREN          
         """
         p[0] = p[2]
@@ -410,7 +480,7 @@ class MyParser(object):
         elif p[2] == "**":
             func = lambda x, y: x ** y
 
-        p[0] = BinOp(p[1], func, p[3])
+        p[0] = BinOp(p[1], func, p[3], p[2])
 
     def p_expr_2_numb(self, p):
         """expr : INT
@@ -449,4 +519,6 @@ while True:
     print(parser.parser.parse(code))
     context.code = parser.parser.parse(code)
 
-    print(context.eval_in_scope())
+    context.plot_init()
+
+    # print(context.eval_in_scope())
