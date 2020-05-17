@@ -49,7 +49,7 @@ class MyLexer(object):
     t_LCPAREN = r"\{"
     t_RCPAREN = r"\}"
     t_IS = r"\="
-    t_COND_OP = r"\=\=|\>|\<|\>\=|\<\="
+    t_COND_OP = r"\=\=|\>\=|\<\=|\>|\<"
     t_SEMI = r"\;"
     t_COMA = r"\,"
 
@@ -100,4 +100,4 @@ class MyLexer(object):
 
 x = MyLexer()
 
-x.test("michal ( 10 )")
+x.test("x >= 125")

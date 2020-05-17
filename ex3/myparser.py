@@ -91,6 +91,10 @@ class BinOp(Expr):
         return self.op(self.left.eval(scope), self.right.eval(scope))
 
 
+class BinOpReversable(BinOp):
+    pass
+
+
 class Constant(Expr):
     def __init__(self, value):
         self.type = "const"
@@ -124,16 +128,17 @@ class ForLoop(Expr):
 
 
 class VariableInit(Expr):
-    def __init__(self, variable, value):
+    def __init__(self, variable, value, type_of):
         self.variable = variable
         self.value = value
+        self.type_of = type_of
 
     def eval(self, scope):
-        scope.put_local(self.variable, self.value.eval(scope))
+        scope.put_local(self.variable, self.value.eval(scope), self.type_of)
         return ()  # Scala easter egg
 
     def plot(self, G):
-        G.add_node(self, desc="init")
+        G.add_node(self, desc="init", type=self.type_of)
         G.add_node(self.variable, desc=self.variable)
         G.add_edge(self, self.variable)
         G.add_edge(self, self.value)
@@ -152,26 +157,28 @@ class FunctionInit(Expr):
 
 
 class VariableRedef(Expr):
-    def __init__(self, variable, value):
+    def __init__(self, variable, value, type_of):
         self.variable = variable
         self.value = value
+        self.type_of = type_of
 
     def eval(self, scope):
-        return scope.redef_var(self.variable, self.value.eval(scope))
+        return scope.redef_var(self.variable, self.value.eval(scope), self.type_of)
 
     def plot(self, G):
         pass
 
 
 class VariableCall(Expr):
-    def __init__(self, variable):
+    def __init__(self, variable, type_of=None):
         self.variable = variable
+        self.type_of = type_of
 
     def eval(self, scope):
-        return scope.get(self.variable)
+        return scope.get(self.variable, self.type_of)
 
     def plot(self, G):
-        G.add_node(self, desc=self.variable)
+        G.add_node(self, desc=self.variable, type=self.type_of)
 
 
 class FunctionCall(Expr):
@@ -245,20 +252,31 @@ class Scope(object):
     def get_func(self, func_name):
         return self.func_scope[func_name]
 
-    def get(self, variable):
+    def get(self, variable, call_type):
         for l in self.stack:
             if variable in l:
-                return l[variable]
+                value, typed = l[variable]
+                if call_type is not None and typed != call_type:
+                    raise Exception(
+                        f"Variable {variable} of type {typed} can not be assigned to {call_type} typed value!"
+                    )
+                return value
 
         raise Exception(f"Variable {variable} has not been initialized!")
 
-    def put_local(self, variable, value):
-        self.stack[-1][variable] = value
+    def put_local(self, variable, value, type_of):
+        self.stack[-1][variable] = (value, type_of)
 
-    def redef_var(self, variable, value):
+    def redef_var(self, variable, value, type_of):
         for l in self.stack:
             if variable in l:
-                l[variable] = value
+                _, temptype = l[variable]
+                if temptype != type_of:
+                    raise Exception(
+                        f"Variable {variable} of type {temptype} can not be assigned to {type_of} typed value!"
+                    )
+
+                l[variable] = (value, type_of)
                 return ()
 
         raise Exception(f"Variable {variable} has not been initialized!")
@@ -266,6 +284,26 @@ class Scope(object):
     def _print(self):
         for l in self.stack:
             print(l)
+
+
+NumberOps = {
+    "+": lambda x, y: x + y,
+    "-": lambda x, y: x - y,
+    "/": lambda x, y: x / y,
+    "%": lambda x, y: x % y,
+    "*": lambda x, y: x * y,
+    "**": lambda x, y: x ** y,
+}
+
+CondOps = {
+    ">": lambda x, y: x > y,
+    "<": lambda x, y: x < y,
+    ">=": lambda x, y: x >= y,
+    "<=": lambda x, y: x <= y,
+    "==": lambda x, y: x == y,
+}
+
+LopOp = {"&&": lambda x, y: x and y, "||": lambda x, y: x or y}
 
 
 class MyParser(object):
@@ -279,7 +317,7 @@ class MyParser(object):
     )
 
     def p_error(self, p):
-        print("Syntax error")
+        raise Exception("Syntax error")
 
     def p_root_block(self, p):
         """root : LCPAREN block RCPAREN
@@ -295,6 +333,11 @@ class MyParser(object):
         """block : line
         """
         p[0] = p[1]
+
+    def p_line_name(self, p):
+        """line : NAME
+        """
+        p[0] = [VariableCall(p[1])]
 
     def p_line_is(self, p):
         """line : expr
@@ -316,7 +359,7 @@ class MyParser(object):
     def p_expr_name_call(self, p):
         """expr : NAME          
         """
-        p[0] = VariableCall(p[1])
+        p[0] = VariableCall(p[1], type_of=MyLexer.reserved["DOUBLE"])
 
     def p_if_block(self, p):
         """ ifelse : IF LPAREN cond RPAREN LCPAREN block RCPAREN
@@ -371,32 +414,32 @@ class MyParser(object):
     def p_assign_expr(self, p):
         """assign : NUMBER NAME IS expr
         """
-        p[0] = VariableInit(p[2], p[4])
+        p[0] = VariableInit(p[2], p[4], MyLexer.reserved[p[1]])
 
     def p_override_expr(self, p):
         """assign : NAME IS expr
         """
-        p[0] = VariableRedef(p[1], p[3])
+        p[0] = VariableRedef(p[1], p[3], MyLexer.reserved["DOUBLE"])
 
     def p_override_cond(self, p):
         """assign : NAME IS cond
         """
-        p[0] = VariableRedef(p[1], p[3])
+        p[0] = VariableRedef(p[1], p[3], MyLexer.reserved["BOOL"])
 
     def p_override_str(self, p):
         """assign : NAME IS stream
         """
-        p[0] = VariableRedef(p[1], p[3])
+        p[0] = VariableRedef(p[1], p[3], MyLexer.reserved["STRING"])
 
     def p_set_bool(self, p):
         """assign : BOOL NAME IS cond
         """
-        p[0] = VariableInit(p[2], p[4])
+        p[0] = VariableInit(p[2], p[4], MyLexer.reserved[p[1]])
 
     def p_set_str(self, p):
         """assign : STRING_T NAME IS stream
         """
-        p[0] = VariableInit(p[2], p[4])
+        p[0] = VariableInit(p[2], p[4], MyLexer.reserved[p[1]])
 
     def p_str_binop(self, p):
         """stream : stream BIN_OP_2 stream  
@@ -407,7 +450,7 @@ class MyParser(object):
     def p_str_name(self, p):
         """stream : NAME  
         """
-        p[0] = VariableCall(p[1])
+        p[0] = VariableCall(p[1], type_of=MyLexer.reserved["STRING"])
 
     def p_str_2_str(self, p):
         """stream : STRING  
@@ -423,32 +466,15 @@ class MyParser(object):
     def p_cond_binop(self, p):
         """ cond : cond LOG_OP cond   
         """
-        func = None
-
-        if p[2] == "&&":
-            func = lambda x, y: x and y
-        elif p[2] == "||":
-            func = lambda x, y: x or y
-
-        p[0] = BinOp(p[1], func, p[3], p[2])
+        p[0] = BinOpReversable(p[1], LopOp[p[2]], p[3], p[2])
 
     def p_cond_rel(self, p):
         """ cond : expr COND_OP expr   
         """
-
-        func = None
-        if p[2] == ">":
-            func = lambda x, y: x > y
-        elif p[2] == "<":
-            func = lambda x, y: x < y
-        elif p[2] == ">=":
-            func = lambda x, y: x >= y
-        elif p[2] == "<=":
-            func = lambda x, y: x <= y
-        elif p[2] == "==":
-            func = lambda x, y: x == y
-
-        p[0] = BinOp(p[1], func, p[3], p[2])
+        if p[2] in ["=="]:
+            p[0] = BinOpReversable(p[1], CondOps[p[2]], p[3], p[2])
+        else:
+            p[0] = BinOp(p[1], CondOps[p[2]], p[3], p[2])
 
     def p_root_line(self, p):
         """root : line     
@@ -465,22 +491,11 @@ class MyParser(object):
                 | expr BIN_OP_2 expr
                 | expr POWER expr           
         """
-        func = None
 
-        if p[2] == "+":
-            func = lambda x, y: x + y
-        elif p[2] == "-":
-            func = lambda x, y: x - y
-        elif p[2] == "/":
-            func = lambda x, y: x / y
-        elif p[2] == "%":
-            func = lambda x, y: x % y
-        elif p[2] == "*":
-            func = lambda x, y: x * y
-        elif p[2] == "**":
-            func = lambda x, y: x ** y
-
-        p[0] = BinOp(p[1], func, p[3], p[2])
+        if p[2] in ["+", "*"]:
+            p[0] = BinOpReversable(p[1], NumberOps[p[2]], p[3], p[2])
+        else:
+            p[0] = BinOp(p[1], NumberOps[p[2]], p[3], p[2])
 
     def p_expr_2_numb(self, p):
         """expr : INT
@@ -519,6 +534,6 @@ while True:
     print(parser.parser.parse(code))
     context.code = parser.parser.parse(code)
 
-    context.plot_init()
+    # context.plot_init()
 
-    # print(context.eval_in_scope())
+    print(context.eval_in_scope())
