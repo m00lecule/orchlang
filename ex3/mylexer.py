@@ -18,21 +18,25 @@ class MyLexer(object):
         "STRING": "STRING_T",
         "True": "TRUE",
         "False": "FALSE",
-        "def": "DEF",
+        "DEF": "DEF",
+        "GLOBAL": "GLOBAL",
+        "RETURN": "RETURN",
     }
 
     tokens = list(reserved.values()) + [
         "LOG_OP",
         "IS",
+        "MINUS",
+        "POWER",
         "LCPAREN",
         "RCPAREN",
         "STRING",
         "NAME",
         "FLOAT",
         "INT",
+        "UNARY",
         "BIN_OP_1",
         "BIN_OP_2",
-        "POWER",
         "LPAREN",
         "RPAREN",
         "COND_OP",
@@ -40,10 +44,10 @@ class MyLexer(object):
         "COMA",
     ]
 
+    t_UNARY = r"cos|sin|tg|ctg"
     t_LOG_OP = r"\&\&|\|\|"
-    t_POWER = r"\*\*"
-    t_BIN_OP_1 = r"/|\*|\%"
-    t_BIN_OP_2 = r"\+|\-"
+    t_BIN_OP_1 = r"\/|\*|\%"
+    t_BIN_OP_2 = r"\+"
     t_LPAREN = r"\("
     t_RPAREN = r"\)"
     t_LCPAREN = r"\{"
@@ -58,12 +62,27 @@ class MyLexer(object):
         return t
 
     def t_NAME(self, t):
-        "[a-zA-Z_][a-zA-Z0-9_]*"
+        "[a-zA-Z][a-zA-Z0-9]*"
 
-        if t.value == "true" or t.value == "false":
+        if t.value.lower() in ["true", "false"]:
             t.type = "BOOL"
+            if t.value.lower() == "true":
+                t.value = True
+            else:
+                t.value = False
+        elif t.value.lower() in ["cos", "sin", "tg", "ctg", "exp", "abs", "log"]:
+            t.type = "UNARY"
+            t.value = t.value.lower()
         else:
             t.type = MyLexer.reserved.get(t.value, "NAME")
+        return t
+
+    def t_POWER(self, t):
+        r"\*\*"
+        return t
+
+    def t_MINUS(self, t):
+        r"-"
         return t
 
     def t_FLOAT(self, t):
@@ -90,14 +109,20 @@ class MyLexer(object):
         self.lexer = lex.lex(module=self, **kwargs)
 
     def test(self, data):
+        ret = []
         self.lexer.input(data)
         while True:
             tok = self.lexer.token()
             if not tok:
                 break
-            print(tok)
+            ret.append(tok)
+
+        return ret
+
+    def parse_text(self, data):
+        return [(t.type, t.value) for t in self.test(data)]
 
 
 x = MyLexer()
 
-x.test("x >= 125")
+# print(x.test("- -10"))
