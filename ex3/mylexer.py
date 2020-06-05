@@ -121,8 +121,3 @@ class MyLexer(object):
 
     def parse_text(self, data):
         return [(t.type, t.value) for t in self.test(data)]
-
-
-x = MyLexer()
-
-# print(x.test("- -10"))

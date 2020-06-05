@@ -3,26 +3,6 @@ from myparser import MyParser, Root, Constant, BinOp, BinOpReversable, VariableC
 from mylexer import MyLexer
 
 
-parser = MyParser()
-
-scope = Root()
-scope.code = parser.parse("-5")
-
-# scope.plot_init()
-print(scope.eval_in_scope()[-1])
-
-# context = Root()
-
-
-# # print(parser.parse(code))
-#         context.code = parser.parse(code)
-
-#         context.init_opt()
-#         context.plot_init()
-
-#         print(context.eval_in_scope())
-
-
 class TestParser(unittest.TestCase):
     def setUp(self):
         self.parser = MyParser()
@@ -233,24 +213,20 @@ class TestParser(unittest.TestCase):
 
         text = "INT i = 0 ; FOR (INT i = 0 ; i < 4 ; i = i + 1) { i = i + i }"
 
-        scope = Root()
-        scope.code = self.parser.parse(text)
+        scope = Root(code=self.parser.parse(text))
         scope.eval_in_scope()
 
         scope.code = self.parser.parse("i")
-
         evaluated = scope.eval_in_scope()
 
         self.assertEqual(evaluated, ("NUMBER", 0))
 
         text = "{ GLOBAL INT x = 2138 }"
 
-        scope = Root()
-        scope.code = self.parser.parse(text)
+        scope = Root(code=self.parser.parse(text))
         scope.eval_in_scope()
 
         scope.code = self.parser.parse("x")
-
         evaluated = scope.eval_in_scope()
 
         self.assertEqual(evaluated, ("NUMBER", 2138))
@@ -341,86 +317,18 @@ class TestParser(unittest.TestCase):
         self.eval_in_scope(scope, "fun2(1)", ("NUMBER", 2))
         self.eval_in_scope(scope, "fun3(fun1(2))", ("NUMBER", 1))
 
-    # var_call = VariableCall("x")
-    # zero = Constant(0, MyLexer.reserved["DOUBLE"])
-    # two = Constant(2, MyLexer.reserved["DOUBLE"])
+    def test_hoist(self):
+        text1 = "INT x = 12; INT z = 0; INT y = 1; FOR(INT i = 0 ; i < 2 ; i = i + 1 ) { z = x + y } "
+        text2 = "x + y"
 
-    # text = "x + 0"
-    # text_1 = "x"
-    # code = self.parser.parse(text)
-    # code1 = self.parser.parse(text_1)
+        for_loop = self.parser.parse(text1)
+        expr = self.parser.parse(text2)
 
-    # self.assertEqual(code, code1)
+        self.assertTrue(expr[0] in for_loop[-1].before.values())
 
-    # test = {
-    #     BinOpReversable.acquire(var_call, zero, "+"): var_call,
-    #     BinOpReversable.acquire(zero, var_call, "+"): var_call,
-    #     BinOp.acquire(var_call, zero, "-"): var_call,
-    #     BinOpReversable.acquire(var_call, two, "**"): BinOpReversable.acquire(
-    #         var_call, var_call, "*"
-    #     ),
-    # }
-
-    # for k, v in test.items():
-    #     self.assertEqual(k, v)
-
-    # test = "{1; 2; 3; RETURN 4; 5}"
-
-    # scope = Root(code=self.parser.parse(text))
-
-    # numb_t = MyLexer.reserved["DOUBLE"]
-    # self.assertEqual(
-    #     scope.code,
-    #     [
-    #         Constant.acquire(1, numb_t),
-    #         Constant.acquire(2, numb_t),
-    #         Constant.acquire(3, numb_t),
-    #         (MyLexer.reserved["RETURN"], Constant.acquire(4, numb_t)),
-    #     ],
-    # )
-    # text = "{ GLOBAL INT x = 2138 }"
-
-    # scope = Root()
-    # scope.code = self.parser.parse(text)
-    # scope.eval_in_scope()
-
-    # scope.code = self.parser.parse("x")
-
-    # evaluated = scope.eval_in_scope()
-
-    # self.assertEqual(evaluated[0], ("NUMBER", 2138))
-
-    # def test_rpn(self):
-    #     tests = {"2 2 –": 0, "3 4 + 5 2 – *": 21}
-
-    #     self.run_tests_is(tests)
-
-    # self.assertEqual(self.lexer.parse_text("-3.1415 "), [("FLOAT", -3.1415)])
-    # self.assertEqual(self.lexer.parse_text(" -3.1415"), [("FLOAT", -3.1415)])
-    # self.assertEqual(self.lexer.parse_text("-3.1415"), [("FLOAT", -3.1415)])
-    # self.assertEqual(self.lexer.parse_text(".00001"), [("FLOAT", 1e-05)])
-    # self.assertEqual(self.lexer.parse_text("0.00001"), [("FLOAT", 1e-05)])
-
-    # def test_int(self):
-    #     self.assertEqual(self.lexer.parse_text(" 1"), [("INT", 1)])
-    #     self.assertEqual(self.lexer.parse_text(" 1 "), [("INT", 1)])
-    #     self.assertEqual(self.lexer.parse_text("1 "), [("INT", 1)])
-    #     self.assertEqual(self.lexer.parse_text("1"), [("INT", 1)])
-    #     self.assertEqual(self.lexer.parse_text("-5"), [("INT", -5)])
-    #     self.assertEqual(self.lexer.parse_text("2137"), [("INT", 2137)])
-
-    # def test_power(self):
-    #     self.assertEqual(self.lexer.parse_text("1"), [("INT", 1)])
-    #     self.assertEqual(self.lexer.parse_text("-5"), [("INT", -5)])
-    #     self.assertEqual(self.lexer.parse_text("2137"), [("INT", 2137)])
-
-    # def test_special_functions(self):
-    #     self.assertEqual(self.lexer.parse_text("cos"), [("UNARY", "cos")])
-    #     self.assertEqual(self.lexer.parse_text("Cos"), [("UNARY", "cos")])
-    #     self.assertEqual(self.lexer.parse_text("Sin"), [("UNARY", "sin")])
-    #     self.assertEqual(self.lexer.parse_text("tg"), [("UNARY", "tg")])
-    #     self.assertEqual(self.lexer.parse_text("Ctg"), [("UNARY", "ctg")])
-    #     self.assertEqual(self.lexer.parse_text("exp"), [("UNARY", "exp")])
+        scope = Root(code=for_loop)
+        scope.eval_in_scope()
+        self.eval_in_scope(scope, "z", ("NUMBER", 13))
 
 
 if __name__ == "__main__":

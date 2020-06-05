@@ -16,6 +16,14 @@ class Root(Expr):
         self.scope = Scope()
         self.code = self.trim(code)
         self.scope.push_layer()
+        self.variables_changed = self.redefines_value() if code is not None else {}
+
+    def redefines_value(self):
+        return {
+            c.variable
+            for c in self.code
+            if isinstance(c, VariableRedef) or isinstance(c, VariableInit)
+        }
 
     def trim(self, code):
         if code == None:
@@ -221,9 +229,6 @@ class BinOp(Expr):
         elif op_sign == "||":
             operation = OR(left, right)
 
-        if operation == None:
-            print(f"none for {op_sign}")
-
         return operation
 
     @staticmethod
@@ -250,9 +255,9 @@ class BinOp(Expr):
 
             if left.type != right.type:
                 if left.type == MyLexer.reserved["STRING"]:
-                    right = right.toString()
+                    right = right.to_string()
                 if left.type == MyLexer.reserved["DOUBLE"]:
-                    right = right.toFloat()
+                    right = right.to_float()
 
             rel_type = left.type
             if op_sign in [">", "<", "<=", ">=", "=="]:
@@ -274,6 +279,9 @@ class BinOp(Expr):
             return ret
 
         return self
+
+    def depends_on(self):
+        return self.left.depends_on().union(self.right.depends_on())
 
     def plot(self, G):
         G.add_node(self, desc=self.op_sign, type=self.type)
@@ -332,6 +340,9 @@ class Subtract(BinOp):
             return left
         return self
 
+    def typed(self):
+        return "NUMBER"
+
 
 class GT(BinOp):
     def __init__(self, left, right):
@@ -340,6 +351,9 @@ class GT(BinOp):
 
     def redux(self):
         return self
+
+    def typed(self):
+        return "BOOL"
 
 
 class LT(BinOp):
@@ -350,6 +364,9 @@ class LT(BinOp):
     def redux(self):
         return self
 
+    def typed(self):
+        return "BOOL"
+
 
 class GE(BinOp):
     def __init__(self, left, right):
@@ -358,6 +375,9 @@ class GE(BinOp):
 
     def redux(self):
         return self
+
+    def typed(self):
+        return "BOOL"
 
 
 class LE(BinOp):
@@ -368,6 +388,9 @@ class LE(BinOp):
     def redux(self):
         return self
 
+    def typed(self):
+        return "BOOL"
+
 
 class IS(BinOp):
     def __init__(self, left, right):
@@ -376,6 +399,9 @@ class IS(BinOp):
 
     def redux(self):
         return self
+
+    def typed(self):
+        return "BOOL"
 
 
 class AND(BinOp):
@@ -386,6 +412,9 @@ class AND(BinOp):
     def redux(self):
         return self
 
+    def typed(self):
+        return "BOOL"
+
 
 class OR(BinOp):
     def __init__(self, left, right):
@@ -394,6 +423,9 @@ class OR(BinOp):
 
     def redux(self):
         return self
+
+    def typed(self):
+        return "BOOL"
 
 
 class Divide(BinOp):
@@ -413,6 +445,9 @@ class Divide(BinOp):
                 return BinOpReversable.acquire(left, const, sign)
         return self
 
+    def typed(self):
+        return "NUMBER"
+
 
 class Power(BinOp):
     def __init__(self, left, right):
@@ -427,6 +462,9 @@ class Power(BinOp):
                 sign = "*"
                 return BinOpReversable.acquire(left, left, sign)
         return self
+
+    def typed(self):
+        return "NUMBER"
 
 
 class BinOpReversable(BinOp):
@@ -504,6 +542,9 @@ class Mult(BinOpReversable):
                 return BinOpReversable.acquire(left, left, sign)
         return self
 
+    def typed(self):
+        return "NUMBER"
+
 
 class Constant(Expr):
 
@@ -524,13 +565,13 @@ class Constant(Expr):
     def plot(self, G):
         G.add_node(self, desc=self.value, type_of=self.type)
 
-    def toString(self):
+    def to_string(self):
         return Constant.acquire(str(self.value), MyLexer.reserved["STRING"])
 
-    def toBool(self):
+    def to_bool(self):
         return Constant.acquire(bool(self.value), MyLexer.reserved["BOOL"])
 
-    def toFloat(self):
+    def to_float(self):
         return Constant.acquire(float(self.value), MyLexer.reserved["DOUBLE"])
 
     def __hash__(self):
@@ -549,6 +590,12 @@ class Constant(Expr):
     def opt(self, scope):
         return self
 
+    def depends_on(self):
+        return set()
+
+    def typed(self):
+        return self.type
+
 
 class ForLoop(Expr):
     def __init__(self, set_var, cond, expr, code):
@@ -557,6 +604,30 @@ class ForLoop(Expr):
         self.cond = cond
         self.expr = expr
         self.body = code
+        self.before = {}
+        self.variables_changed = self.body.variables_changed.union(
+            self.set.depends_on()
+        )
+        self.hoist_code()
+
+    def hoist_code(self):
+        seed = "sweetnight"
+        counter = 0
+        for line in self.body.code:
+            if (
+                isinstance(line, VariableInit) or isinstance(line, VariableRedef)
+            ) and self.variables_changed.isdisjoint(line.depends_on()):
+                expr = line.value
+                var_name = seed + str(counter)
+                self.before[var_name] = expr
+                line.value = VariableCall.acquire(var_name)
+                counter += 1
+
+    def init_hoisted(self, scope):
+        for k, v in self.before.items():
+            typed, value = v.eval(scope)
+            const = Constant.acquire(value, typed)
+            VariableInit(k, const, typed).eval(scope)
 
     def plot(self, G):
         G.add_node(self, type=self.type)
@@ -570,6 +641,8 @@ class ForLoop(Expr):
         G.add_edge(self, self.body, desc="code")
 
     def eval(self, scope=None):
+        scope.push_layer()
+        self.init_hoisted(scope)
         scope.push_layer()
         self.set.eval(scope)
         ret = ()
@@ -587,6 +660,8 @@ class ForLoop(Expr):
             self.expr.eval(scope)
 
         scope.pop_layer()
+        scope.pop_layer()
+
         return ret
 
     def opt(self, scope):
@@ -629,6 +704,9 @@ class VariableInit(Expr):
     def opt(self, scope):
         scope.put_local(self.variable, self.value, self.type_of)
         return self
+
+    def depends_on(self):
+        return self.value.depends_on()
 
 
 class GlobVariableInit(VariableInit):
@@ -686,6 +764,12 @@ class VariableRedef(Expr):
         G.add_edge(self, self.value)
         self.value.plot(G)
 
+    def depends_on(self):
+        return self.value.depends_on()
+
+    def typed(self):
+        return self.value.typed()
+
 
 class VariableCall(Expr):
 
@@ -725,6 +809,12 @@ class VariableCall(Expr):
         print("FROM THE INSIDE " + str(type(value)))
         return value if type(value) is Constant else self
 
+    def depends_on(self):
+        return {self.variable}
+
+    def typed(self):
+        return None
+
 
 class FunctionCall(Expr):
     def __init__(self, fun_name, args):
@@ -753,13 +843,13 @@ class FunctionCall(Expr):
             scope.put_local(v_name, vv_value, v_type)
 
         ret = fun.eval_in_scope(scope)
-        print(ret)
 
-        type_of = ret
+        type_of, _ = ret
         if type_of == MyLexer.reserved["RETURN"]:
             _, ret = ret
         scope.pop_layer()
         ret_type, ret_value = ret
+
 
         if ret_type != f_type:
             raise Exception(
@@ -772,6 +862,9 @@ class FunctionCall(Expr):
 
     def opt(self, scope):
         pass
+
+    def depends_on(self):
+        return {v.depends_on() for v in self.args}
 
 
 class IfElse(Expr):
@@ -1192,10 +1285,6 @@ if __name__ == "__main__":
             line = getline("> ")
 
         code += line
-
-        print(code)
-
-        print(parser.parse(code))
         context.code = parser.parse(code)
 
         # context.init_opt()
