@@ -331,5 +331,16 @@ class TestParser(unittest.TestCase):
         self.eval_in_scope(scope, "z", ("NUMBER", 13))
 
 
+    def test_expilcit_conversion(self):
+        tests = {
+            "toStr 1": ("STRING_T", "1"),
+            '(toStr 15) + "michal"': ("STRING_T", "15michal"),
+            "(toNumb True) + 21": ("NUMBER", 22),
+            "toStr 23 * 5 + 2": ("STRING_T", "117")
+        }
+
+        self.run_tests_is(tests)
+
+
 if __name__ == "__main__":
     unittest.main()

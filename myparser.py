@@ -78,13 +78,12 @@ class Root(Expr):
         plt.show()
 
     def init_opt(self):
-        scope = Scope()
-        self.opt(scope)
+        self.opt()
 
-    def opt(self, scope):
-        scope.push_layer()
-        self.code = [task.opt(scope) for task in self.code]
-        scope.pop_layer()
+    def opt(self):
+        # scope.push_layer()
+        self.code = [task.opt() for task in self.code]
+        # scope.pop_layer()
         return self
 
     def plot(self, G):
@@ -128,28 +127,49 @@ class UnaryOp(Expr):
     def clean_up():
         UnaryOp.pool = {}
 
-    @staticmethod
-    def reduce(arg, op_sign):
+    def opt_const(self):
+        op = UnaryOps[self.op_sign]
+        arg = self.arg
+        op_sign = self.op_sign
+        
+        type_of = None
 
-        op = UnaryOps[op_sign]
+        if op_sign == "tostr":
+            type_of = MyLexer.reserved["STRING"]
+        elif op_sign == "tonumb":
+            type_of = MyLexer.reserved["DOUBLE"]
+        elif op_sign == "tobool":
+            type_of = MyLexer.reserved["BOOL"]
+        else:
+            type_of = arg.type
 
         if type(arg) is Constant:
-            return Constant.acquire(op(arg.value), arg.type)
+            return Constant.acquire(op(arg.value), type_of)
 
-        return None
+        return self
+
+    @staticmethod
+    def define_operation(arg, op_sign):
+        operation = None
+        
+        if op_sign == "tostr":
+            operation = ToString(arg)
+        elif op_sign == "tonumb":
+            operation = ToNumber(arg)
+        elif op_sign == "tobool":
+            operation = ToBool(arg)
+        else:
+            operation = UnaryOp(arg, op_sign)
+        return operation
 
     @staticmethod
     def acquire(arg, op_sign):
-
-        ret = UnaryOp.reduce(arg, op_sign)
-
-        if ret is not None:
-            return ret
-
         t = (arg, op_sign)
 
         if t not in UnaryOp.pool.keys():
-            UnaryOp.pool[t] = UnaryOp(arg, op_sign)
+            operation = UnaryOp.define_operation(arg, op_sign)
+            operation = operation.opt()
+            UnaryOp.pool[t] = operation
 
         return UnaryOp.pool[t]
 
@@ -159,9 +179,11 @@ class UnaryOp(Expr):
         self.type = "unop"
         self.arg = arg
         self.op_sign = op_sign
+        self.op = UnaryOps[self.op_sign]
 
-    def opt(self, scope):
-        return self
+    def opt(self):
+        self.arg = self.arg.opt()
+        return self.opt_const()
 
     def plot(self, G):
         G.add_node(self, desc=self.op_sign, type=self.type)
@@ -171,20 +193,63 @@ class UnaryOp(Expr):
     def eval(self, scope):
         (l_type, l_val) = self.arg.eval(scope)
 
-        op = UnaryOps[self.op_sign]
-
+    
         if l_type is not MyLexer.reserved["DOUBLE"]:
             raise Exception(
                 f"Unary operation - {self.op_sign} is not defined for {l_type}"
             )
 
-        return (l_type, op(l_val))
+        return (l_type, self.op(l_val))
 
     def __hash__(self):
         return hash(self.arg)
 
     def __eq__(self, other):
         return self.__class__ == other.__class__ and self.arg == other.arg
+    
+    def depends_on(self):
+        return self.arg.depends_on()
+
+
+
+class ToString(UnaryOp):
+    def __init__(self, arg):
+        self.sign = "tostr"
+        super(ToString, self).__init__(arg, self.sign)
+        self.op = UnaryOps[self.sign]
+
+    def opt(self):
+        self.arg = self.arg.opt()
+
+        if type(self.arg) is Constant:
+            return Constant.acquire(self.op(self.arg.value), MyLexer.reserved["STRING"])
+        return self
+
+    def eval(self, scope):
+        l_type, l_val = self.arg.eval(scope)
+
+        return (MyLexer.reserved["STRING"], self.op((l_val)))
+
+
+class ToNumber(UnaryOp):
+    def __init__(self, arg):
+        self.sign = "tonumb"
+        super(ToNumber, self).__init__(arg, self.sign)
+        self.op = UnaryOps[self.sign]
+
+    def eval(self, scope):
+        (l_type, l_val) = self.arg.eval(scope)
+        return (MyLexer.reserved["DOUBLE"], self.op(l_val))
+
+class ToBool(UnaryOp):
+    def __init__(self, arg):
+        self.sign = "tobool"
+        super(ToBool, self).__init__(arg, self.sign)
+        self.op = UnaryOps[self.sign]
+
+    def eval(self, scope):
+        (l_type, l_val) = self.arg.eval(scope)
+        return (MyLexer.reserved["BOOL"], self.op(l_val))
 
 
 class BinOp(Expr):
@@ -252,7 +317,6 @@ class BinOp(Expr):
         op = self.op
 
         if type(left) is Constant and type(right) is Constant:
-
             if left.type != right.type:
                 if left.type == MyLexer.reserved["STRING"]:
                     right = right.to_string()
@@ -264,21 +328,12 @@ class BinOp(Expr):
                 rel_type = MyLexer.reserved["BOOL"]
 
             return Constant.acquire(op(left.value, right.value), rel_type)
-        return None
-
-    def redux(self):
-        pass
+        return self
 
     def opt(self):
-        ret = self.opt_const()
-        if ret is not None:
-            return ret
-
-        ret = self.redux()
-        if ret is not None:
-            return ret
-
-        return self
+        self.left = self.left.opt()
+        self.right = self.right.opt()
+        return self.opt_const()
 
     def depends_on(self):
         return self.left.depends_on().union(self.right.depends_on())
@@ -333,12 +388,12 @@ class Subtract(BinOp):
         self.sign = "-"
         super(Subtract, self).__init__(left, right, NumberOps[self.sign], self.sign)
 
-    def redux(self):
-        left = self.left
-        right = self.right
+    def opt(self):
+        left = self.left.opt()
+        right = self.right.opt()
         if type(right) is Constant and right.value == 0:
             return left
-        return self
+        return self.opt_const()
 
     def typed(self):
         return "NUMBER"
@@ -349,9 +404,6 @@ class GT(BinOp):
         self.sign = ">"
         super(GT, self).__init__(left, right, NumberOps[self.sign], self.sign)
 
-    def redux(self):
-        return self
-
     def typed(self):
         return "BOOL"
 
@@ -361,8 +413,6 @@ class LT(BinOp):
         self.sign = "<"
         super(LT, self).__init__(left, right, NumberOps[self.sign], self.sign)
 
-    def redux(self):
-        return self
 
     def typed(self):
         return "BOOL"
@@ -373,9 +423,6 @@ class GE(BinOp):
         self.sign = ">="
         super(GE, self).__init__(left, right, NumberOps[self.sign], self.sign)
 
-    def redux(self):
-        return self
-
     def typed(self):
         return "BOOL"
 
@@ -384,9 +431,6 @@ class LE(BinOp):
     def __init__(self, left, right):
         self.sign = "<="
         super(LE, self).__init__(left, right, NumberOps[self.sign], self.sign)
-
-    def redux(self):
-        return self
 
     def typed(self):
         return "BOOL"
@@ -397,9 +441,6 @@ class IS(BinOp):
         self.sign = "=="
         super(IS, self).__init__(left, right, NumberOps[self.sign], self.sign)
 
-    def redux(self):
-        return self
-
     def typed(self):
         return "BOOL"
 
@@ -408,9 +449,6 @@ class AND(BinOp):
     def __init__(self, left, right):
         self.sign = "&&"
         super(AND, self).__init__(left, right, LopOp[self.sign], self.sign)
-
-    def redux(self):
-        return self
 
     def typed(self):
         return "BOOL"
@@ -421,9 +459,6 @@ class OR(BinOp):
         self.sign = "||"
         super(OR, self).__init__(left, right, LopOp[self.sign], self.sign)
 
-    def redux(self):
-        return self
-
     def typed(self):
         return "BOOL"
 
@@ -433,9 +468,9 @@ class Divide(BinOp):
         self.sign = "/"
         super(Divide, self).__init__(left, right, NumberOps[self.sign], self.sign)
 
-    def redux(self):
-        left = self.left
-        right = self.right
+    def opt(self):
+        left = self.left.opt()
+        right = self.right.opt()
         if type(right) is Constant:
             if right.value == 1:
                 return left
@@ -443,7 +478,7 @@ class Divide(BinOp):
                 sign = "*"
                 const = Constant.acquire(0.5, MyLexer.reserved["DOUBLE"])
                 return BinOpReversable.acquire(left, const, sign)
-        return self
+        return self.opt_const()
 
     def typed(self):
         return "NUMBER"
@@ -454,14 +489,14 @@ class Power(BinOp):
         self.sign = "**"
         super(Power, self).__init__(left, right, NumberOps[self.sign], self.sign)
 
-    def redux(self):
-        left = self.left
-        right = self.right
+    def opt(self):
+        left = self.left.opt()
+        right = self.right.opt()
         if type(right) is Constant:
             if right.value == 2:
                 sign = "*"
                 return BinOpReversable.acquire(left, left, sign)
-        return self
+        return self.opt_const()
 
     def typed(self):
         return "NUMBER"
@@ -510,14 +545,14 @@ class Addition(BinOpReversable):
         self.sign = "+"
         super(Addition, self).__init__(left, right, NumberOps[self.sign], self.sign)
 
-    def redux(self):
-        left = self.left
-        right = self.right
+    def opt(self):
+        left = self.left.opt()
+        right = self.right.opt()
         if type(left) is Constant and left.value == 0:
             return right
         elif type(right) is Constant and right.value == 0:
             return left
-        return self
+        return self.opt_const()
 
 
 class Mult(BinOpReversable):
@@ -525,9 +560,9 @@ class Mult(BinOpReversable):
         self.sign = "*"
         super(Mult, self).__init__(left, right, NumberOps[self.sign], self.sign)
 
-    def redux(self):
-        left = self.left
-        right = self.right
+    def opt(self):
+        left = self.left.opt()
+        right = self.right.opt()
         if type(left) is Constant:
             if left.value == 1:
                 return right
@@ -540,7 +575,7 @@ class Mult(BinOpReversable):
             elif right.value == 2:
                 sign = "+"
                 return BinOpReversable.acquire(left, left, sign)
-        return self
+        return self.opt_const()
 
     def typed(self):
         return "NUMBER"
@@ -587,7 +622,7 @@ class Constant(Expr):
             Constant.pool[t] = Constant(value, type_of)
         return Constant.pool[t]
 
-    def opt(self, scope):
+    def opt(self):
         return self
 
     def depends_on(self):
@@ -664,7 +699,7 @@ class ForLoop(Expr):
 
         return ret
 
-    def opt(self, scope):
+    def opt(self):
         return self
 
 
@@ -679,7 +714,12 @@ class VariableInit(Expr):
         (v_type, v_value) = self.value.eval(scope)
 
         if v_type != self.type_of:
-            raise Exception("xddd")
+            if self.type_of == MyLexer.reserved["DOUBLE"]:
+                v_value = float(v_value)
+            elif self.type_of == MyLexer.reserved["STRING"]:
+                v_value = str(v_value)
+            elif self.type_of == MyLexer.reserved["BOOL"]:
+                v_value = bool(v_value)
 
         scope.put_local(self.variable, v_value, self.type_of)
         return ()  # Scala easter egg
@@ -701,8 +741,8 @@ class VariableInit(Expr):
             and self.type_of == self.type_of
         )
 
-    def opt(self, scope):
-        scope.put_local(self.variable, self.value, self.type_of)
+    def opt(self):
+        #scope.put_local(self.variable, self.value, self.type_of)
         return self
 
     def depends_on(self):
@@ -717,7 +757,12 @@ class GlobVariableInit(VariableInit):
         (v_type, v_value) = self.value.eval(scope)
 
         if v_type != self.type_of:
-            raise Exception("xddd")
+            if self.type_of == MyLexer.reserved["DOUBLE"]:
+                v_value = float(v_value)
+            elif self.type_of == MyLexer.reserved["STRING"]:
+                v_value = str(v_value)
+            elif self.type_of == MyLexer.reserved["BOOL"]:
+                v_value = bool(v_value)
 
         scope.put_global(self.variable, v_value, self.type_of)
         return ()  # Scala easter egg
@@ -742,7 +787,7 @@ class FunctionInit(Expr):
         scope.put_func(self.type, self.func_name, self.args, self.code)
         return ()
 
-    def opt(self, scope):
+    def opt(self):
         return self
 
 
@@ -754,7 +799,7 @@ class VariableRedef(Expr):
     def eval(self, scope):
         return scope.redef_var(self.variable, self.value.eval(scope))
 
-    def opt(self, scope):
+    def opt(self):
         # scope.put_local(self.variable, self.value, self.type_of)
         return self
 
@@ -804,10 +849,8 @@ class VariableCall(Expr):
 
         return VariableCall.pool[t]
 
-    def opt(self, scope):
-        value = scope.get(self.variable, self.type_of)
-        print("FROM THE INSIDE " + str(type(value)))
-        return value if type(value) is Constant else self
+    def opt(self):
+        return self
 
     def depends_on(self):
         return {self.variable}
@@ -860,8 +903,8 @@ class FunctionCall(Expr):
     def plot(self, G):
         pass
 
-    def opt(self, scope):
-        pass
+    def opt(self):
+        return self
 
     def depends_on(self):
         return {v.depends_on() for v in self.args}
@@ -896,13 +939,13 @@ class IfElse(Expr):
             G.add_edge(self, self.else_block, desc="else_block")
             self.else_block.plot(G)
 
-    def opt(self, scope):
+    def opt(self):
         if type(self.cond) is Constant:
             if self.cond.value is True:
-                self.if_block = self.if_block.opt(scope)
+                self.if_block = self.if_block.opt()
                 return self.if_block
             elif self.cond.value is False:
-                self.else_block = self.else_block.opt(scope)
+                self.else_block = self.else_block.opt()
                 return self.else_block
         return self
 
@@ -916,9 +959,7 @@ class Scope(object):
         self.stack.append({})
 
     def pop_layer(self):
-        self._print()
         self.stack.pop()
-        self._print()
 
     def put_func(self, f_type, func_name, args, func_body):
         for l in self.stack:
@@ -989,6 +1030,9 @@ UnaryOps = {
     "log": lambda x: math.log(x),
     "abs": lambda x: math.fabs(x),
     "-": lambda x: -x,
+    "tostr": lambda x: str(x),
+    "tonumb": lambda x: float(x),
+    "tobool": lambda x: bool(x)
 }
 
 NumberOps = {
@@ -1229,7 +1273,7 @@ class MyParser(object):
         """expr : UNARY expr 
         """
         sign = p[1]
-        p[0] = UnaryOp(p[2], sign)
+        p[0] = UnaryOp.acquire(p[2], sign)
 
     def p_expr_unary_paren(self, p):
         """expr : MINUS LPAREN expr RPAREN
@@ -1267,9 +1311,47 @@ class MyParser(object):
         self.parser = yacc.yacc(module=self)
 
 
+
+class RPNParser(MyParser):
+    def p_expr_binop(self, p):
+        """expr : expr expr BIN_OP_1
+                | expr expr BIN_OP_2
+                | expr expr POWER
+                | expr expr MINUS
+        """
+
+        if p[3] in ["+", "*"]:
+            p[0] = BinOpReversable.acquire(p[1], p[2], p[3])
+        else:
+            p[0] = BinOp.acquire(p[1], p[2], p[3])
+
+    def p_expr_unary(self, p):
+        """expr : expr UNARY 
+        """
+        sign = p[2]
+        p[0] = UnaryOp.acquire(p[1], sign)
+
+
+    def p_cond_binop(self, p):
+        """ expr : expr expr LOG_OP   
+        """
+        p[0] = BinOpReversable.acquire(p[1], p[2], p[3])
+
+    def p_cond_rel(self, p):
+        """ expr : expr expr COND_OP   
+        """
+        if p[2] in ["=="]:
+            p[0] = BinOpReversable.acquire(p[1], p[2], p[3])
+        else:
+            p[0] = BinOp.acquire(p[1], p[2], p[3])
+
+
 if __name__ == "__main__":
     parser = MyParser()
+    rpn = RPNParser()
+    current = parser
     context = Root()
+    plot = False
 
     def getline(prompt):
         return input(prompt)
@@ -1284,10 +1366,19 @@ if __name__ == "__main__":
             code += line[:-1] + "; "
             line = getline("> ")
 
-        code += line
-        context.code = parser.parse(code)
+        if line == "PLOT ON":
+            plot = True
+        elif line == "PLOT OFF":
+            plot = False
+        elif line == "SWITCH RPN":
+            current = rpn
+        elif line == "SWITCH NORMAL":
+            current = parser
+        else:
+            code += line
+            context.code = current.parse(code)
 
-        # context.init_opt()
-        context.plot_init()
+            if plot:
+                context.plot_init()
 
-        print(context.eval_in_scope())
+            print(context.eval_in_scope())

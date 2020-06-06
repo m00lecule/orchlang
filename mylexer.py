@@ -26,7 +26,6 @@ class MyLexer(object):
     tokens = list(reserved.values()) + [
         "LOG_OP",
         "IS",
-        "MINUS",
         "POWER",
         "LCPAREN",
         "RCPAREN",
@@ -42,6 +41,7 @@ class MyLexer(object):
         "COND_OP",
         "SEMI",
         "COMA",
+        "MINUS",
     ]
 
     t_UNARY = r"cos|sin|tg|ctg"
@@ -70,7 +70,7 @@ class MyLexer(object):
                 t.value = True
             else:
                 t.value = False
-        elif t.value.lower() in ["cos", "sin", "tg", "ctg", "exp", "abs", "log"]:
+        elif t.value.lower() in ["cos", "sin", "tg", "ctg", "exp", "abs", "log", "tostr", "tonumb", "tobool"]:
             t.type = "UNARY"
             t.value = t.value.lower()
         else:
@@ -81,10 +81,6 @@ class MyLexer(object):
         r"\*\*"
         return t
 
-    def t_MINUS(self, t):
-        r"-"
-        return t
-
     def t_FLOAT(self, t):
         r"\-?\d*\.\d*"
         t.value = float(t.value)
@@ -93,6 +89,10 @@ class MyLexer(object):
     def t_INT(self, t):
         r"\-?\d+"
         t.value = int(t.value)
+        return t
+
+    def t_MINUS(self, t):
+        r"-"
         return t
 
     def t_newline(self, t):

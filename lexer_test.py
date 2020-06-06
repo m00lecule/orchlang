@@ -2,11 +2,6 @@ import unittest
 from mylexer import MyLexer
 
 
-lex = MyLexer()
-
-print(lex.parse_text("**"))
-
-
 class TestLexer(unittest.TestCase):
     def setUp(self):
         self.lexer = MyLexer()
@@ -19,9 +14,9 @@ class TestLexer(unittest.TestCase):
 
     def test_float(self):
         tests = {
-            "-3.1415 ": [("MINUS", "-"), ("FLOAT", 3.1415)],
-            " -3.1415": [("MINUS", "-"), ("FLOAT", 3.1415)],
-            "-3.1415": [("MINUS", "-"), ("FLOAT", 3.1415)],
+            "-3.1415 ": [ ("FLOAT", -3.1415)],
+            " -3.1415": [ ("FLOAT", -3.1415)],
+            "-3.1415": [("FLOAT", -3.1415)],
             ".00001": [("FLOAT", 1e-05)],
             "0.00001": [("FLOAT", 1e-05)],
         }
@@ -34,7 +29,7 @@ class TestLexer(unittest.TestCase):
             " 1 ": [("INT", 1)],
             "1 ": [("INT", 1)],
             "1": [("INT", 1)],
-            "-5": [("MINUS", "-"), ("INT", 5)],
+            "-5": [("INT", -5)],
             "2137": [("INT", 2137)],
         }
 

@@ -7,21 +7,21 @@ Repository contains excercises for AGH UST compilers course - http://orchel.pl/c
 ### Przygotowanie środowiska:
 
 ```
-    python -m venv compilers
-    source compilers/bin/activate
-    pip install -r requirements.txt
+python -m venv compilers
+source compilers/bin/activate
+pip install -r requirements.txt
 ```
 
 ### Uruchomienie interpretera:
 
 ```
-    python myparser.py
+python myparser.py
 ```
 
 Przy poprawnym uruchomieniu interpretera w lewym dolnym rogu terminala pojawi się prompt:
 
 ```
-    >>
+>>
 ```
 
 Brawo! Udało Ci się poprawnie przygotować środowisko i uruchomić kalkulator, pora wykonać pierwszą operację:
@@ -29,7 +29,7 @@ Brawo! Udało Ci się poprawnie przygotować środowisko i uruchomić kalkulator
 Wpisz:
 
 ```
-    >> 2100 + 37
+>> 2100 + 37
 ```
 
 I kliknij enter
@@ -37,64 +37,67 @@ I kliknij enter
 Output:
 
 ```
-    ('NUMBER', 2137)
+('NUMBER', 2137)
 ```
 
 ### Uruchomienie testów lexera:
 
 ```
-    python lexer_test.py
+python lexer_test.py
 ```
 
 ### Uruchomienie testów parsera:
 
 ```
-    python parser_test.py
+python parser_test.py
 ```
 
 ## 1. Opis zaimplementowanych funkcjonalności.
 
 ### Kalkulator wspiera 3 typy wartości:
 
-- wartości numeryczne typ INT lub DOUBLE (WN)
-- ciągi znaków - typ STRING (CZ)
-- wartości logiczne - typ BOOL (WL)
+- **INT** lub **DOUBLE** - wartości numeryczne (NUMBER)
+  format: `\d*.?\d`
+- **STRING** - ciągi znaków
+  format: `"\s+"`
+- **BOOL** - wartości logiczne
+  format: `True | False`
 
 ### oraz operacje:
 
-- dodawanie (+) (WN i CZ)
-- odejmowanie (-) (WN)
-- mnożenie (\*) (WN)
-- dzielenie (/) (WN)
-- potęgowanie (\*\*) (WN)
-- funkcje trygonometryczne (sin, cos, tg, ctg) dla (WN)
-- funkcja wykładnicza (exp [WN])
-- relacje większości, mniejszości i równości (>, < , >= , <= , ==) (WN)
-- operacje logiczne - and (&&) i or (||) ()
+- **dodawanie** (+) (NUMBER i STRING)
+- **odejmowanie** (-) (NUMBER)
+- **mnożenie** (\*) (NUMBER)
+- **dzielenie** (/) (NUMBER)
+- **potęgowanie** (\*\*) (NUMBER)
+- **funkcje trygonometryczne** (sin, cos, tg, ctg) dla (NUMBER)
+- **funkcja wykładnicza** (exp [NUMBER])
+- **relacje większości**, **mniejszości** i **równości** (>, < , >= , <= , ==) (NUMBER)
+- **operacje logiczne** - and (&&) i or (||) (BOOL)
 
 ### Składnia alokowania zmiennej:
 
 ```
-    TYP nazwa = WARTOSC
+TYP nazwa = WARTOSC
 ```
 
 widoczność zmiennych jest ograniczona do bloku wywołania. Przykładowo:
 
 ```
+{
     {
-        {
-            INT x = 2;
-        }
-
-        x = 1
-        #Exception: Variable x has not been initialized!
+        INT x = 2;
     }
+
+    x = 1
+    #Exception: Variable x has not been initialized!
+}
 ```
 
 Natomiast aby usykać zakres globalny należy użyć słowa kluczowego `GLOBAL`:
 
 ```
-    GLOBAL TYP nazwa = WARTOSC
+GLOBAL TYP nazwa = WARTOSC
 ```
 
 W ten sposób powyższa operacja zostanie obsłużona.
@@ -102,31 +105,31 @@ W ten sposób powyższa operacja zostanie obsłużona.
 ### Składnia bloków if-else:
 
 ```
-    IF (cond) {...} ELSE {...}
+IF (cond) {...} ELSE {...}
 ```
 
 ### Składnia pętli for:
 
 ```
-    FOR(TYP nazwa = expr ; cond ; expr) {...}
+FOR(TYP nazwa = expr ; cond ; expr) {...}
 ```
 
 ### Składania definiowania funkcji:
 
 ```
-    DEF TYP nazwa ( TYP1 arg1 ... ) { ... ; ... ; expr}
+DEF TYP nazwa ( TYP1 arg1 ... ) { ... ; ... ; expr}
 ```
 
 funkcje zwracają wartość z ostatniej linii (oznaczone jako expr w przykładzie), w przypadkach bardziej skoplikowanych można użyć słowa kluczowego RETURN. Przykład
 
 ```
-    DEF INT michal () { IF ( True ) { RETURN 1 } ELSE {RETURN 2}}
+DEF INT michal () { IF ( True ) { RETURN 1 } ELSE {RETURN 2}}
 ```
 
 Output:
 
 ```
-    ('NUMBER', 1)
+('NUMBER', 1)
 ```
 
 ### Konwersja typów:
@@ -134,17 +137,36 @@ Output:
 Wszystkie operatory w przypadku braku zgodności typów argumentów będą próbowały konwertować prawy operand do typu lewego przykładowe operacje:
 
 ```
-    >> 1 + "23"
-    ('NUMBER', 24.0)
+>> 1 + "23"
+('NUMBER', 24.0)
 
-    >> "dostane z kompilatorow " + 5
-    ('STRING_T', 'dostane z kompilatorow 5')
+>> "dostane z kompilatorow " + 5
+('STRING_T', 'dostane z kompilatorow 5')
 
-    >> 1 + True
-    ('NUMBER', 2)
+>> 1 + True
+('NUMBER', 2)
 
-    >> True && 1
-    ('BOOL', True)
+>> True && 1
+('BOOL', True)
+```
+
+Natomiast zostały zaimplementowane także operatory konwersji typów są to:
+
+- **toNumb** - konwersja do wartości numerycznej
+- **toStr** - konwersja do ciągu znaków
+- **toBool** - kowersja to wartości logicznej
+
+przykłady użycia:
+
+```
+>> (toStr 1) + "test"
+('STRING_T', '1test')
+
+>> toNumb "1" + "2"
+('NUMBER', 12.0)
+
+>> toStr True && False
+('STRING_T', 'False')
 ```
 
 ## 2. Dokumentacja do projektu: szczegóły implementacji.
@@ -159,7 +181,7 @@ Wszystkie klasy implementują funkcje:
 - **plot(graph)** - dodanie operacji do wizualzacji drzewa składniowego
 - **eval(scope)** - obliczenie wartości operacji, wraca krotkę (TYP, WARTOŚĆ)
 - **STATIC acquire(args)** - w celu optymalizacji użyca pamięci, funkcja zwraca wartości z puli
-- **redux()** - redukcja operacji (np. obliczenie wartości w przypadku znania wartości obu argumentów w czasie kompilacji lub optymalizacje algebraiczne)
+- **opt()** - redukcja operacji (np. obliczenie wartości w przypadku znania wartości obu argumentów w czasie kompilacji lub optymalizacje algebraiczne)
 
 ## Lista klas:
 
@@ -172,7 +194,7 @@ Wszystkie klasy implementują funkcje:
 - **eval_in_scope(scope)**
   początek wykonania programu
 
-### - **Scope** - reprezenracja stosu zmiennych
+### - **Scope** - reprezentacja stosu zmiennych
 
 - **push_layer()** - dołożenie ramki stosu
 - **pop_layer()** - zjęcie ramki ze stosu
@@ -242,6 +264,15 @@ Projekt zawiera dwie klasy TestParser oraz TestLexer. Niżej przedstawione wymie
 
 ## Diagramy:
 
+Aby włączyć funkcję rysowania diagramów należy wpisać:
+
+```
+PLOT ON
+
+#wyłączenie funkcjonalności
+PLOT OFF
+```
+
 ```
 >> a + b - c + a - 5 + 12 + c + b
 ```
@@ -254,6 +285,24 @@ Projekt zawiera dwie klasy TestParser oraz TestLexer. Niżej przedstawione wymie
 
 ![](img/opt.png)
 
+## Tryb:
+
+Aby przełączyć kalkulator w tryb RPN (Reverse Polish Notation), należy wpisać:
+
+```
+>> SWITCH RPN
+>> 1 1 +
+('NUMBER', 2)
+```
+
+Aby wrócić do normalnego trybu wpisz:
+
+```
+>> SWITCH NORMAL
+>> 1 + 1
+('NUMBER', 2)
+```
+
 ## 1. Funkcjonalność z laboratorium 1
 
 1. Obsługa tokenów dla liczb całkowitych i rzeczywistych
@@ -264,8 +313,8 @@ Testy potwierdzające:
 
 ```
 TestLexer
-   test_float
-   test_int
+    test_float
+    test_int
 ```
 
 2. Obsługa tokenów dla funkcji specjalnych sin, cos, itd
@@ -365,8 +414,7 @@ Wykonanie: 5/5
 Testy potwierdzające:
 
 ```
-TestParser
-    test_rpn
+TestParserRPN
 ```
 
 5.  Instrukcje warunkowe i pętle.
@@ -395,8 +443,6 @@ Wykonanie: 5/5
 
 Ta funkcjonalność korzysta z modułu `networkx`.
 Klasy wykorzystywane przy reprezentacji drzewa składniowego implementują funkcję plot.
-
-Przykłady prostych drzew składniowych:
 
 2. Deklarowanie typów dla zmiennych.
 
@@ -457,13 +503,10 @@ Wykonanie: 10/10
 
 Wykonanie: 5/5
 
-W dalszym etapie, została zaimplementowana funkcjonalność automatycznej konwersji typów
-
-<!-- Testy potwierdzające:
-
 ```
-
-``` -->
+TestParser
+    test_expilcit_conversion
+```
 
 9. Terminowe wgranie zadań na laboratorium.
 
